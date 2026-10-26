@@ -2,7 +2,7 @@ Daily Wins V10 — Configuration, Google Drive backup, and opt-in private cloud 
 
 IMPORTANT: Existing data remains under dailyWins.v2. Keep the same GitHub Pages URL. Do not clear website data or reinstall as a troubleshooting step.
 
-Configuration contains backup, privacy, and connected-list settings. Cloud sync is OFF until you connect with your private device key. No keys are included in these public files. An empty cloud cannot replace populated device data.
+Configuration contains manual Export/Restore, Google Drive backup, privacy, and connected-list settings. Manual restore creates a recovery snapshot and disconnects cloud sync before replacing the device copy. Cloud sync is OFF until you connect with your private device key. No keys are included in these public files. An empty cloud cannot replace populated device data.
 
 To migrate, choose Prepare migration backup, retain the downloaded JSON in a recoverable location, then choose Verify saved backup and migrate and select that exact saved file. Migration verifies the saved backup, full cloud payload, counts and typed IDs before enabling sync. If edits conflict, sync pauses and preserves both copies.
 
