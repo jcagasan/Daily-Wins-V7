@@ -1,0 +1,29 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Repair Daily Wins backup storage</title><style>body{font:18px system-ui;background:#101114;color:#f5f5f5;max-width:600px;margin:40px auto;padding:24px;line-height:1.5}button{font:inherit;padding:16px;border:0;border-radius:12px;background:#6ea8fe;color:#101114}pre{white-space:pre-wrap}a{color:#8bbaff}</style><h1>Repair Daily Wins backup storage</h1><p>This moves older safety backups into the browser’s larger backup database, verifies every copy, and frees space for the update. Your active lists stay in place.</p><p>A backup will download first. Keep it until your lists are confirmed.</p><button id="update">Preserve backups and repair storage</button><p><button id="archive">Download preserved safety backups</button></p><pre id="status" role="status">Ready.</pre><script>
+const button=document.getElementById('update'),status=document.getElementById('status');
+document.getElementById('archive').onclick=async()=>{try{const request=indexedDB.open('dailyWinsRecovery',1);request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('copies'))request.result.createObjectStore('copies')};const db=await new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error)});const store=db.transaction('copies','readonly').objectStore('copies');const kr=store.getAllKeys(),vr=store.getAll();const result=await Promise.all([kr,vr].map(r=>new Promise((resolve,reject)=>{r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})));const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify({app:'Daily Wins recovery archive',copies:result[0].map((key,i)=>({key,raw:result[1][i]}))},null,2)],{type:'application/json'}));a.download='daily-wins-preserved-safety-backups.json';a.click();status.textContent='Safety backup archive downloaded.'}catch(e){status.textContent='Archive download stopped: '+e.message}};
+
+button.onclick=async()=>{button.disabled=true;try{
+const raw=localStorage.getItem('dailyWins.v2');
+if(!raw)throw Error('No saved lists were found in this browser. Stop here and open this link in the browser used to install Daily Wins.');
+const data=JSON.parse(raw);if(!Array.isArray(data.tasks)||!Array.isArray(data.lists))throw Error('Saved data needs review. No app files were changed.');
+const open=indexedDB.open('dailyWinsRecovery',1);const db=await new Promise((resolve,reject)=>{open.onupgradeneeded=()=>{if(!open.result.objectStoreNames.contains('copies'))open.result.createObjectStore('copies')};open.onsuccess=()=>resolve(open.result);open.onerror=()=>reject(open.error)});
+const write=async(key,value)=>new Promise((resolve,reject)=>{const tx=db.transaction('copies','readwrite');tx.objectStore('copies').put(value,key);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||Error('Backup database write failed'));tx.onabort=()=>reject(tx.error||Error('Backup transaction aborted'))});
+const read=async key=>new Promise((resolve,reject)=>{const tx=db.transaction('copies','readonly'),r=tx.objectStore('copies').get(key);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)});
+const stamp=crypto.randomUUID();const keys=Object.keys(localStorage).filter(k=>k==='dailyWins.backups.v8'||k.startsWith('dailyWins.recovery.'));
+const saved=[];await write(stamp+':active',raw);if(await read(stamp+':active')!==raw)throw Error('Active recovery copy verification failed.');
+for(const key of keys){const value=localStorage.getItem(key);await write(stamp+':'+key,value);if(await read(stamp+':'+key)!==value)throw Error('Backup archive verification failed.');saved.push({key,value})}
+if(localStorage.getItem('dailyWins.v2')!==raw)throw Error('Lists changed while preserving backups. Please retry.');
+for(const item of saved){if(localStorage.getItem(item.key)!==item.value)throw Error('A backup changed during verification. Please retry.')}
+for(const item of saved)localStorage.removeItem(item.key);
+const original='dailyWins.preV10.original';if(localStorage.getItem(original)===null){localStorage.setItem(original,raw);if(localStorage.getItem(original)!==raw)throw Error('Original checkpoint verification failed.')}
+status.textContent='All archived backups verified. Your active lists are unchanged.';
+const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw))),b=>b.toString(16).padStart(2,'0')).join('');
+const blob=new Blob([JSON.stringify({app:'Daily Wins',version:10,raw,data,sha256:digest},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='daily-wins-before-app-update.json';a.click();
+status.textContent='Backups preserved and storage repaired. Refreshing app files…';
+const appScope=new URL('./',location.href).href;
+for(const registration of await navigator.serviceWorker.getRegistrations())if(registration.scope===appScope)await registration.unregister();
+for(const name of await caches.keys())if(/^daily-wins-v\d/.test(name))await caches.delete(name);
+if(localStorage.getItem('dailyWins.v2')!==raw)throw Error('Saved data changed during the update. Your recovery copy is retained; stop and review.');
+location.replace('./?updated='+Date.now());
+}catch(e){status.textContent='Update stopped: '+(e?.message||'Backup database unavailable');button.disabled=false}};
+</script></html>
