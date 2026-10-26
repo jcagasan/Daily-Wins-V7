@@ -1,1 +1,6 @@
-Daily Wins v8. Same dailyWins.v2 browser storage key. Back up using Export Backup before upgrading. Restore Backup can replace all local data from a JSON file. Hourly automatic snapshots are device-only, not cloud backups. Save downloaded backups to Google Drive manually. Editing all task types, notes, drag-and-drop desktop reordering, up/down mobile reordering, recurring template ordering, ChatGPT shortcuts and copy-to-ChatGPT prompts, bulk paste tasks. Upload the five web files to the SAME GitHub Pages URL to preserve data. Do not change domains/repositories without exporting and importing a backup.
+Daily Wins V9 Organized — Google Drive backup + custom list sections + ChatGPT project links + offline planning tools.
+
+IMPORTANT: Existing data uses dailyWins.v2. Deploy to same GitHub Pages URL, do not clear website data.
+Google Drive requires OAuth setup and authorization; verify first backup in app.
+Sections do not move/delete existing tasks; existing tasks appear under Unsorted.
+No OpenAI conversational API is included: a secure backend is required, and this build does not use ZimaOS. Planning tools work locally without AI.
