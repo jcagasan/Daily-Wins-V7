@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Update Daily Wins safely</title><style>body{font:18px system-ui;background:#101114;color:#f5f5f5;max-width:600px;margin:40px auto;padding:24px;line-height:1.5}button{font:inherit;padding:16px;border:0;border-radius:12px;background:#6ea8fe;color:#101114}pre{white-space:pre-wrap}a{color:#8bbaff}</style><h1>Update Daily Wins</h1><p>This refreshes the app files while keeping your lists, notes, history and device settings.</p><p>A backup will download first. Keep it until your lists are confirmed.</p><button id="update">Back up and refresh app files</button><pre id="status" role="status">Ready.</pre><script>
+const button=document.getElementById('update'),status=document.getElementById('status');
+button.onclick=async()=>{button.disabled=true;try{
+const raw=localStorage.getItem('dailyWins.v2');
+if(!raw)throw Error('No saved lists were found in this browser. Stop here and open this link in the browser used to install Daily Wins.');
+const data=JSON.parse(raw);if(!Array.isArray(data.tasks)||!Array.isArray(data.lists))throw Error('Saved data needs review. No app files were changed.');
+const key='dailyWins.recovery.before-app-refresh.'+crypto.randomUUID();localStorage.setItem(key,raw);if(localStorage.getItem(key)!==raw)throw Error('Recovery copy could not be verified.');
+const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw))),b=>b.toString(16).padStart(2,'0')).join('');
+const blob=new Blob([JSON.stringify({app:'Daily Wins',version:10,raw,data,sha256:digest},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='daily-wins-before-app-update.json';a.click();
+status.textContent='Recovery copy verified. Refreshing offline app files…';
+const appScope=new URL('./',location.href).href;
+for(const registration of await navigator.serviceWorker.getRegistrations())if(registration.scope===appScope)await registration.unregister();
+for(const name of await caches.keys())if(/^daily-wins-v\d/.test(name))await caches.delete(name);
+if(localStorage.getItem('dailyWins.v2')!==raw)throw Error('Saved data changed during the update. Your recovery copy is retained; stop and review.');
+location.replace('./?updated='+Date.now());
+}catch(e){status.textContent='Update stopped: '+e.message;button.disabled=false}};
+</script></html>
