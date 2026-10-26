@@ -1,4 +1,4 @@
-const CACHE='daily-wins-v10-3';
+const CACHE='daily-wins-v10-4';
 const ASSETS=['./','./index.html','./sync.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
 // Activate on the next launch after existing V9 windows close; no forced reload during edits.
