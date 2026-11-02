@@ -1,4 +1,4 @@
-const CACHE='daily-wins-v10-no-pin-2';
+const CACHE='daily-wins-v10-delete-sections-1';
 const ASSETS=['./','./index.html','./sync.js','./google-signin.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',event=>{
   event.waitUntil((async()=>{
