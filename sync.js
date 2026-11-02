@@ -14,10 +14,58 @@ function cloudInventory(d){return {tasks:d.tasks.length,lists:d.lists.length,lis
 function checkpoint(remote){const cp={url:cloud.url,revision:remote.revision,base:remote.payload};localStorage.setItem('dailyWins.cloudCheckpoint.v10',JSON.stringify(cp));cloud.revision=cp.revision;cloud.base=cp.base}
 function pauseCloud(message){cloud.paused=true;cloudMessage(message);document.querySelector('#cloudConflict').hidden=false}
 function scheduleCloudSync(){if(!cloud.key||cloud.paused)return;clearTimeout(cloud.timer);cloud.timer=setTimeout(()=>syncCloud().catch(e=>cloudMessage(e.message)),2000)}
+function mergeCloudCopies(base,local,remote){
+ const equal=(a,b)=>stable(a)===stable(b);
+ const merge=(b,l,r,path)=>{
+  if(equal(l,r))return l;
+  if(equal(l,b))return r;
+  if(equal(r,b))return l;
+  if(Array.isArray(l)&&Array.isArray(r)&&Array.isArray(b)){
+   const identifiable=a=>a.every(x=>x&&typeof x==='object'&&!Array.isArray(x)&&x.id!==undefined);
+   if(!identifiable(l)||!identifiable(r)||!identifiable(b))throw Error('Unmergeable changes at '+path);
+   const key=x=>typeof x.id+':'+x.id;
+   const bm=new Map(b.map(x=>[key(x),x])),lm=new Map(l.map(x=>[key(x),x])),rm=new Map(r.map(x=>[key(x),x]));
+   if(bm.size!==b.length||lm.size!==l.length||rm.size!==r.length)throw Error('Duplicate record IDs at '+path);
+   const keys=[...lm.keys(),...rm.keys().filter(k=>!lm.has(k))],out=[];
+   for(const k of keys){
+    const bv=bm.get(k),lv=lm.get(k),rv=rm.get(k);
+    if(lv===undefined){if(bv!==undefined&&!equal(rv,bv))throw Error('Deletion conflicts at '+path);if(bv===undefined)out.push(rv);continue}
+    if(rv===undefined){if(bv!==undefined&&!equal(lv,bv))throw Error('Deletion conflicts at '+path);if(bv===undefined)out.push(lv);continue}
+    out.push(merge(bv,lv,rv,path+'/'+k))
+   }
+   return out;
+  }
+  if(l&&r&&typeof l==='object'&&typeof r==='object'&&!Array.isArray(l)&&!Array.isArray(r)){
+   const out={};for(const k of new Set([...Object.keys(b||{}),...Object.keys(l),...Object.keys(r)])){
+    const bv=b?.[k],lv=l[k],rv=r[k];
+    if(lv===undefined&&rv===undefined)continue;
+    if(lv===undefined){if(bv!==undefined&&!equal(rv,bv))throw Error('Deletion conflicts at '+path+'/'+k);if(bv===undefined)out[k]=rv;continue}
+    if(rv===undefined){if(bv!==undefined&&!equal(lv,bv))throw Error('Deletion conflicts at '+path+'/'+k);if(bv===undefined)out[k]=lv;continue}
+    out[k]=merge(bv,lv,rv,path+'/'+k)
+   }return out;
+  }
+  throw Error('Conflicting edits at '+path);
+ };
+ return validateLocalState(merge(base,local,remote,'state'));
+}
 async function syncCloud(){if(!cloud.key||cloud.busy||cloud.paused)return;cloud.busy=true;try{const remote=await cloudAPI('/v1/state');if(!remote.initialized){cloudMessage('Cloud is empty. Use Verify and migrate a copy; local data is unchanged.');return}if(cloud.base===null){const captured=stable(cloudData());let anchor=remote;if(await sha(anchor.payload)!==anchor.sha256)throw Error('Cloud checksum failed');if(captured!==stable(JSON.parse(anchor.payload)))anchor=await cloudAPI('/v1/link-baseline');if(!anchor.initialized){cloudMessage('No verified import baseline found. Automatic replacement is blocked.');return}if(await sha(anchor.payload)!==anchor.sha256)throw Error('Cloud baseline checksum failed');const incoming=validateLocalState(JSON.parse(anchor.payload));if(captured===stable(incoming)&&stable(anchor.inventory)===stable(cloudInventory(incoming))&&captured===stable(cloudData())){await protectSnapshot('before-cloud-link');if(captured!==stable(cloudData()))throw Error('Device changed during backup; retry sync');checkpoint(anchor);if(anchor.revision===remote.revision){cloudMessage('Matching cloud copy verified · revision '+remote.revision);return}}else{cloudMessage('Existing cloud differs from this device. No verified checkpoint; automatic replacement is blocked.');return}}
 
 const local=stable(cloudData()),base=stable(JSON.parse(cloud.base)),other=stable(JSON.parse(remote.payload));
-if(local!==base&&other!==base&&local!==other){pauseCloud('Both copies changed. Sync paused to protect your edits.');return}
+if(local!==base&&other!==base&&local!==other){
+ let merged;
+ try{merged=mergeCloudCopies(JSON.parse(cloud.base),JSON.parse(JSON.stringify(cloudData())),JSON.parse(remote.payload))}
+ catch(e){pauseCloud('Both copies changed. Sync paused: '+e.message+'. Download both copies for review.');return}
+ const captured=JSON.stringify(cloudData());
+ await protectSnapshot('before-safe-merge');
+ if(captured!==JSON.stringify(cloudData()))throw Error('Device changed during merge; retry');
+ const payload=JSON.stringify(merged);
+ const result=await cloudAPI('/v1/sync',{expectedRevision:remote.revision,payload,requestId:crypto.randomUUID()});
+ if(await sha(result.payload)!==result.sha256||stable(JSON.parse(result.payload))!==stable(merged))throw Error('Merged cloud verification failed');
+ const localFields={};for(const k of cloudLocalFields)if(k in state)localFields[k]=state[k];
+ state={...merged,...localFields};
+ localStorage.setItem('dailyWins.v2',JSON.stringify(state));
+ checkpoint(result);render();cloudMessage('Both copies safely merged · revision '+result.revision);return
+}
 if(local===other){checkpoint(remote);cloudMessage('Synced · revision '+remote.revision);return}
 if(local!==base){const sent=JSON.stringify(cloudData());const result=await cloudAPI('/v1/sync',{expectedRevision:remote.revision,payload:sent,requestId:crypto.randomUUID()});if(await sha(result.payload)!==result.sha256)throw Error('Cloud verification failed');checkpoint(result);cloudMessage('Device changes saved · revision '+result.revision)}else{const captured=JSON.stringify(cloudData());if(await sha(remote.payload)!==remote.sha256)throw Error('Cloud checksum failed');const incoming=validateLocalState(JSON.parse(remote.payload));if(captured!==JSON.stringify(cloudData()))throw Error('Device changed during verification; retry sync');await protectSnapshot('before-cloud-update');if(captured!==JSON.stringify(cloudData()))throw Error('Device changed during backup; retry sync');const privateFields={};for(const k of cloudLocalFields)if(k in state)privateFields[k]=state[k];state={...incoming,...privateFields};localStorage.setItem('dailyWins.v2',JSON.stringify(state));checkpoint(remote);render();cloudMessage('Cloud changes received · revision '+remote.revision)}}catch(e){if(e.status===409)pauseCloud('Cloud changed during sync. Neither newer copy was overwritten; review both copies.');else cloudMessage('Sync pending: '+e.message)}finally{cloud.busy=false}}
 window.addEventListener('DOMContentLoaded',()=>{
